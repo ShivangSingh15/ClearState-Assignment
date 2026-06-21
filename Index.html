@@ -28,20 +28,20 @@
   <section class="controls">
 
     <!-- Company selector — hidden when only one company exists -->
-    <div class="field" id="companyField" style="display:none">
+    <div class="field grow" id="companyField" style="display:none">
       <label for="fCompany">Company</label>
       <select id="fCompany"></select>
     </div>
 
-    <div class="field">
+    <div class="field grow">
       <label for="fEntity">Entity / division</label>
       <select id="fEntity"></select>
     </div>
-    <div class="field">
+    <div class="field grow">
       <label for="fYear">Reporting year</label>
       <select id="fYear"></select>
     </div>
-    <div class="field">
+    <div class="field fixed">
       <label>Basis</label>
       <div class="basis-wrap">
         <div class="seg" id="basisSeg">
@@ -51,7 +51,7 @@
         <span class="info">i<span class="tip" id="basisTip">Loading…</span></span>
       </div>
     </div>
-    <div class="field">
+    <div class="field fixed">
       <label>Period</label>
       <div class="seg" id="periodSeg">
         <button data-period="Quarter">Quarter</button>
@@ -59,14 +59,14 @@
         <button data-period="FullYear" class="on">Full year</button>
       </div>
     </div>
-    <div class="field" id="quarterField">
+    <div class="field grow" id="quarterField">
       <label for="fQuarter">Quarter</label>
       <select id="fQuarter">
         <option value="1">Q1</option><option value="2">Q2</option>
         <option value="3">Q3</option><option value="4" selected>Q4</option>
       </select>
     </div>
-    <div class="field">
+    <div class="field grow">
       <label for="fBreakdown">Breakdown by</label>
       <select id="fBreakdown"></select>
     </div>
@@ -94,7 +94,7 @@
       <div class="panel">
         <h3 id="bdTitle">Breakdown</h3>
         <div class="p-sub" id="bdSub"></div>
-        <div class="chart-box"><canvas id="bdChart"></canvas></div>
+        <div class="chart-box" id="bdBox"><canvas id="bdChart"></canvas></div>
         <div id="bdEmpty" class="state"><div>No breakdown data for this selection.</div></div>
       </div>
     </section>

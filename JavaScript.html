@@ -267,7 +267,7 @@ const App = (function () {
     const labels = series.map(function (p) { return p.label; });
     const data   = series.map(function (p) { return p.value; });
     const colors = series.map(function (p) { return p.status === 'actual' ? ACCENT : RECON; });
-    if (trendChart) trendChart.destroy();
+    if (trendChart) { trendChart.destroy(); trendChart = null; }
     trendChart = new Chart($('trendChart'), {
       type: 'line',
       data: { labels: labels, datasets: [{ data: data,
@@ -289,8 +289,9 @@ const App = (function () {
     $('bdSub').textContent = d.kpi.periodLabel + ' · ' +
       (state.basis === 'CER' ? 'CER' : 'Reported CHF') + ' · ' + state.unit;
     $('bdEmpty').classList.toggle('show', items.length === 0);
-    $('bdChart').style.display = items.length ? 'block' : 'none';
-    if (bdChart) bdChart.destroy();
+    // Toggle the chart-box WRAPPER (not the canvas) so Chart.js keeps correct sizing.
+    $('bdBox').style.display = items.length ? 'block' : 'none';
+    if (bdChart) { bdChart.destroy(); bdChart = null; }
     if (!items.length) return;
     bdChart = new Chart($('bdChart'), {
       type: 'bar',
@@ -306,7 +307,10 @@ const App = (function () {
 
   function baseOpts(labelFn) {
     return {
-      responsive: true, maintainAspectRatio: false, animation: { duration: 350 },
+      responsive: true, maintainAspectRatio: false,
+      animation: false,                 // no re-animation on filter change → no flicker
+      resizeDelay: 50,                  // debounce iframe resize events
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: labelFn },
