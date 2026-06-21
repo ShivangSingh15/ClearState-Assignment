@@ -1,0 +1,372 @@
+<!-- JavaScript.html — client controller, included by Index.html -->
+<script>
+const App = (function () {
+  'use strict';
+
+  // ---- client state (selection only — dataset never lives here) -----------
+  const state = {
+    company: null,          // selected company name
+    basis: 'CHF',
+    periodType: 'FullYear',
+    fiscalYear: null,
+    quarterIndex: 4,
+    entity: 'Group',
+    breakdownDim: 'Region',
+    unit: 'CHF m',
+    config: null
+  };
+  let trendChart = null, bdChart = null;
+
+  const $  = function (id) { return document.getElementById(id); };
+  const fmtNum = function (v) {
+    if (v === null || v === undefined) return '—';
+    return Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  };
+  const fmtPct = function (v) {
+    if (v === null || v === undefined) return '—';
+    return (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
+  };
+  const arrow = function (v) { return v === null ? '' : (v > 0 ? '▲' : v < 0 ? '▼' : '—'); };
+  const cls   = function (v) { return v === null ? 'flat' : (v > 0 ? 'pos' : v < 0 ? 'neg' : 'flat'); };
+
+  // ---- state helpers ------------------------------------------------------
+  function showState(which) {
+    ['loading', 'errorState', 'dash'].forEach(function (id) {
+      const el = $(id);
+      if (id === 'dash') el.style.display = (which === 'dash') ? 'block' : 'none';
+      else el.classList.toggle('show', which === id);
+    });
+  }
+  function showError(err) {
+    $('errTitle').textContent = friendlyTitle(err && err.code);
+    $('errMsg').textContent = (err && err.message) || 'Unexpected error.';
+    showState('errorState');
+  }
+  function friendlyTitle(code) {
+    const map = {
+      FACT_MISSING:    'Data tab not found',
+      CONFIG_MISSING:  'Config tab not found',
+      COMPANY_MISSING: 'Company tab not found',
+      FACT_SCHEMA:     'Data schema changed',
+      DIM_MISSING:     'Dimension tab not found'
+    };
+    return map[code] || 'Something went wrong';
+  }
+
+  // ---- bootstrap ----------------------------------------------------------
+  function init() {
+    showState('loading');
+    google.script.run
+      .withSuccessHandler(onBootstrap)
+      .withFailureHandler(function (e) { showError({ message: e.message }); })
+      .getBootstrap(state.company);   // null on first load → server picks default
+  }
+
+  function onBootstrap(res) {
+    if (!res || !res.ok) return showError(res && res.error);
+    const b = res.data;
+    state.config    = b.config;
+    state.company   = b.config.company;
+    state.basis     = b.config.default_basis;
+    state.periodType = b.config.default_period_type;
+    state.entity    = b.config.default_entity;
+    state.fiscalYear = b.config.default_year;
+    state.unit      = b.config.currency_unit;
+
+    // Company selector: show only when multiple companies are available
+    const compField = $('companyField');
+    if (b.companies && b.companies.length > 1) {
+      compField.style.display = '';
+      fill($('fCompany'), b.companies, state.company);
+    } else {
+      compField.style.display = 'none';
+    }
+
+    $('title').textContent = b.config.company + ' Performance Dashboard';
+    $('basisTip').textContent = b.config.cer_methodology || 'CER = constant exchange rate.';
+    $('demoFlag').style.display = b.config.fiscalDemo ? 'inline-block' : 'none';
+
+    // Source + refresh box
+    $('sourceBox').innerHTML =
+      '<div><strong>Source:</strong> <a href="' + (b.source.url || '#') + '" target="_blank">' +
+        esc(b.source.name || 'source') + '</a> · ' + esc(b.source.release || '') + '</div>' +
+      '<div>File: ' + esc(b.source.file || '—') +
+        ' · retrieved ' + esc(b.source.retrieved || '—') + '</div>' +
+      '<div>Last refresh: <span id="lastRefresh">' + esc(b.source.last_refresh || '—') + '</span>' +
+        ' <button class="refresh" onclick="App.refresh()">↻ Refresh data</button></div>';
+
+    fill($('fEntity'),    b.entities, state.entity);
+    fill($('fYear'),      b.years,    state.fiscalYear);
+    const bdOptions = b.drilldowns.length ? b.drilldowns : ['Region'];
+    fill($('fBreakdown'), bdOptions,  state.breakdownDim);
+    if (bdOptions.indexOf(state.breakdownDim) < 0) state.breakdownDim = bdOptions[0];
+
+    syncSeg('basisSeg',  'basis',  state.basis);
+    syncSeg('periodSeg', 'period', state.periodType);
+    $('fQuarter').value = String(state.quarterIndex);
+    reflectPeriodUI();
+
+    bindEvents();
+    load();
+  }
+
+  // ---- company change — re-bootstrap for new company ----------------------
+  function onCompanyChange(company) {
+    state.company = company;
+    showState('loading');
+    google.script.run
+      .withSuccessHandler(onBootstrap)
+      .withFailureHandler(function (e) { showError({ message: e.message }); })
+      .getBootstrap(company);
+  }
+
+  // ---- helpers ------------------------------------------------------------
+  function fill(sel, items, selected) {
+    sel.innerHTML = '';
+    items.forEach(function (it) {
+      const o = document.createElement('option');
+      o.value = String(it); o.textContent = String(it);
+      if (String(it) === String(selected)) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+  function syncSeg(segId, attr, val) {
+    [].forEach.call($(segId).children, function (btn) {
+      btn.classList.toggle('on', btn.getAttribute('data-' + attr) === val);
+    });
+  }
+  function reflectPeriodUI() {
+    $('quarterField').style.opacity = (state.periodType === 'FullYear') ? .4 : 1;
+    $('fQuarter').disabled = (state.periodType === 'FullYear');
+  }
+
+  // ---- events -------------------------------------------------------------
+  function bindEvents() {
+    // Company selector — triggers a full re-bootstrap for the new company
+    const compSel = $('fCompany');
+    compSel.addEventListener('change', function (e) { onCompanyChange(e.target.value); });
+
+    $('fEntity').addEventListener('change',    function (e) { state.entity = e.target.value; load(); });
+    $('fYear').addEventListener('change',      function (e) { state.fiscalYear = Number(e.target.value); load(); });
+    $('fQuarter').addEventListener('change',   function (e) { state.quarterIndex = Number(e.target.value); load(); });
+    $('fBreakdown').addEventListener('change', function (e) { state.breakdownDim = e.target.value; load(); });
+
+    $('basisSeg').addEventListener('click', function (e) {
+      const b = e.target.getAttribute('data-basis'); if (!b) return;
+      state.basis = b; syncSeg('basisSeg', 'basis', b); load();
+    });
+    $('periodSeg').addEventListener('click', function (e) {
+      const p = e.target.getAttribute('data-period'); if (!p) return;
+      state.periodType = p; syncSeg('periodSeg', 'period', p); reflectPeriodUI(); load();
+    });
+  }
+
+  // ---- main load ----------------------------------------------------------
+  function load() {
+    setBusy(true);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        setBusy(false);
+        if (!res || !res.ok) return showError(res && res.error);
+        render(res.data);
+      })
+      .withFailureHandler(function (e) { setBusy(false); showError({ message: e.message }); })
+      .getDashboardData({
+        company:      state.company,       // always passed so server scopes correctly
+        basis:        state.basis,
+        periodType:   state.periodType,
+        fiscalYear:   state.fiscalYear,
+        quarterIndex: state.quarterIndex,
+        entity:       state.entity,
+        drilldown:    'None',
+        breakdownDim: state.breakdownDim
+      });
+  }
+  function setBusy(on) {
+    if (on && $('dash').style.display === 'none') showState('loading');
+    else showState('dash');
+    document.body.style.cursor = on ? 'progress' : 'default';
+  }
+
+  // ---- render -------------------------------------------------------------
+  function render(d) {
+    state.unit = d.kpi.unit;
+    renderKpis(d);
+    renderTrend(d.series);
+    renderBreakdown(d);
+    renderTable(d);
+    $('foot').textContent =
+      'Values in ' + d.kpi.unit + '. Basis: ' +
+      (d.kpi.basis === 'CER' ? 'Constant exchange rate (published)' : 'Reported CHF') +
+      '. Generated ' + new Date(d.generatedAt).toLocaleString() + '.';
+  }
+
+  function renderKpis(d) {
+    const k = d.kpi;
+    const basisLabel = (k.basis === 'CER' ? 'CER' : 'Reported CHF');
+    const cards = [];
+
+    cards.push(card(
+      k.entity + ' sales · ' + k.periodLabel,
+      k.value === null ? '—' : fmtNum(k.value),
+      state.unit,
+      k.value === null
+        ? '<span class="badge warn">No ' + basisLabel + ' value</span>'
+        : (k.complete === false
+            ? '<span class="badge warn">Incomplete year</span>'
+            : '<span class="badge ok">' + basisLabel + '</span>')
+    ));
+
+    cards.push(card(
+      'YoY growth (' + basisLabel + ')',
+      k.growth === null ? '—' : fmtPct(k.growth), '',
+      (k.growth === null ? '' :
+        '<span class="delta ' + cls(k.growth) + '">' + arrow(k.growth) + ' ' + fmtPct(k.growth) + '</span>') +
+      '<span class="prov ' + (k.growthSource === 'published' ? 'published' : 'computed') + '">' +
+        esc(k.growthSource) + '</span>'
+    ));
+
+    if (state.periodType === 'Quarter') {
+      cards.push(card('QoQ change',
+        k.qoq === null ? '—' : fmtPct(k.qoq), '',
+        k.qoq === null
+          ? '<span class="badge warn">No prior quarter</span>'
+          : '<span class="delta ' + cls(k.qoq) + '">' + arrow(k.qoq) + ' ' + fmtPct(k.qoq) + '</span>' +
+            '<span class="prov computed">computed</span>'));
+    } else {
+      const c = d.completeness;
+      cards.push(card('Year completeness', c.presentQuarters + ' / 4', 'quarters',
+        c.complete
+          ? '<span class="badge ok">Complete</span>'
+          : '<span class="badge warn">Partial year</span>'));
+    }
+
+    cards.push(card('Data status', statusLabel(k.status), '',
+      '<span class="status-pill status-' + k.status + '">' + k.status + '</span>'));
+
+    $('kpis').innerHTML = cards.join('');
+  }
+
+  function statusLabel(s) {
+    return ({ actual:'Actual', reconstructed:'Reconstructed', partial:'Partial',
+              incomplete:'Incomplete', missing:'Missing' }[s]) || s;
+  }
+  function card(label, value, unit, meta) {
+    return '<div class="kpi"><div class="k-label">' + esc(label) + '</div>' +
+      '<div class="k-value numeric">' + value +
+        (unit ? '<span class="k-unit">' + esc(unit) + '</span>' : '') + '</div>' +
+      '<div class="k-meta">' + (meta || '') + '</div></div>';
+  }
+
+  // ---- charts -------------------------------------------------------------
+  const ACCENT = '#0a6c74', ACCENT2 = '#0e8a94', RECON = '#c79a3a';
+
+  function renderTrend(series) {
+    $('trendSub').textContent = 'Standalone quarterly sales · ' +
+      (state.basis === 'CER' ? 'CER (published)' : 'Reported CHF') + ' · ' + state.unit;
+    const labels = series.map(function (p) { return p.label; });
+    const data   = series.map(function (p) { return p.value; });
+    const colors = series.map(function (p) { return p.status === 'actual' ? ACCENT : RECON; });
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart($('trendChart'), {
+      type: 'line',
+      data: { labels: labels, datasets: [{ data: data,
+        borderColor: ACCENT, backgroundColor: 'rgba(10,108,116,.08)',
+        fill: true, tension: .25, pointRadius: 4, pointBackgroundColor: colors,
+        pointBorderColor: '#fff', pointBorderWidth: 1.5, borderWidth: 2
+      }]},
+      options: baseOpts(function (ctx) {
+        const p = series[ctx.dataIndex];
+        return fmtNum(ctx.parsed.y) + ' ' + state.unit +
+          (p && p.status !== 'actual' ? '  (' + p.status + ')' : '');
+      })
+    });
+  }
+
+  function renderBreakdown(d) {
+    const items = (d.breakdown || []).slice(0, 12);
+    $('bdTitle').textContent = 'By ' + d.breakdownDim.toLowerCase();
+    $('bdSub').textContent = d.kpi.periodLabel + ' · ' +
+      (state.basis === 'CER' ? 'CER' : 'Reported CHF') + ' · ' + state.unit;
+    $('bdEmpty').classList.toggle('show', items.length === 0);
+    $('bdChart').style.display = items.length ? 'block' : 'none';
+    if (bdChart) bdChart.destroy();
+    if (!items.length) return;
+    bdChart = new Chart($('bdChart'), {
+      type: 'bar',
+      data: { labels: items.map(function (x) { return x.entity; }),
+        datasets: [{ data: items.map(function (x) { return x.value; }),
+          backgroundColor: ACCENT2, borderRadius: 4, maxBarThickness: 26 }] },
+      options: Object.assign(
+        baseOpts(function (ctx) { return fmtNum(ctx.parsed.x) + ' ' + state.unit; }),
+        { indexAxis: 'y' }
+      )
+    });
+  }
+
+  function baseOpts(labelFn) {
+    return {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 350 },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: labelFn },
+          backgroundColor: '#0d1b2a', padding: 10, cornerRadius: 8 }
+      },
+      scales: {
+        x: { grid: { color: '#eef2f6' }, ticks: { color: '#7c8da0', font: { size: 11 } } },
+        y: { grid: { color: '#eef2f6' }, ticks: { color: '#7c8da0', font: { size: 11 },
+             callback: function (v) { return fmtNum(v); } } }
+      }
+    };
+  }
+
+  // ---- table --------------------------------------------------------------
+  function renderTable(d) {
+    const rows = d.table || [];
+    $('tblTitle').textContent = d.kpi.periodLabel + ' — detail by ' + d.breakdownDim.toLowerCase();
+    $('tblSub').textContent = 'Sales in ' + state.unit + '; YoY shows ' +
+      (state.basis === 'CER' ? 'CER' : 'reported CHF') + ' growth (published where available).';
+    $('thMember').textContent = d.breakdownDim;
+    $('tableEmpty').classList.toggle('show', rows.length === 0);
+    const body = $('detailBody'); body.innerHTML = '';
+    rows.forEach(function (r) {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><span class="dot" style="background:' + (r.status === 'actual' ? ACCENT : RECON) + '"></span>' +
+          esc(r.entity) + '</td>' +
+        '<td class="num">' + fmtNum(r.value) + '</td>' +
+        '<td class="num">' + (r.share === null ? '—' : (r.share * 100).toFixed(1) + '%') + '</td>' +
+        '<td class="num ' + cls(r.growth) + '">' + (r.growth === null ? '—' : fmtPct(r.growth)) +
+          (r.growth !== null
+            ? ' <span class="prov ' + (r.growthSource === 'published' ? 'published' : 'computed') +
+              '" style="font-size:9px">' + (r.growthSource === 'published' ? 'pub' : 'calc') + '</span>'
+            : '') + '</td>' +
+        '<td class="num ' + cls(r.qoq) + '">' + (r.qoq === null ? '—' : fmtPct(r.qoq)) + '</td>' +
+        '<td><span class="status-pill status-' + r.status + '">' + r.status + '</span></td>';
+      body.appendChild(tr);
+    });
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]);
+    });
+  }
+
+  // ---- refresh ------------------------------------------------------------
+  function refresh() {
+    const el = $('lastRefresh'); if (el) el.textContent = 'refreshing…';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok && el) el.textContent = res.data.last_refresh;
+        load();
+      })
+      .withFailureHandler(function (e) { showError({ message: e.message }); })
+      .refreshData();
+  }
+
+  return { init: init, reload: init, refresh: refresh };
+})();
+
+window.addEventListener('DOMContentLoaded', App.init);
+</script>
