@@ -11,6 +11,14 @@ Currently seeded with Roche data only.
 
 ---
 
+**Live dashboard:** [Roche Dashboard](https://script.google.com/macros/s/AKfycbwvbw8tgKCLSce7h-9srv3kTbQKD6OWoQF0WLlhGTJqW5HNq43M9OlhaCWgzBePQvPO/exec)
+
+**Data layer (Google Sheet):** [Google Sheet Backend](https://docs.google.com/spreadsheets/d/1Im4rIFsitn0cMLANcXHPbtnbQdJDLp5RZv0Mt5kTfLs/edit?usp=sharing)
+
+The Google Sheet is the single source of truth — all KPI values, chart data, and calculations are driven from the `02_FACT` tab at runtime. The deployed dashboard reads nothing from hard-coded arrays; changing a value in the Sheet and clicking **Refresh** in the dashboard reflects it immediately.
+
+---
+
 ## 1. Files in this package
 
 ```
@@ -64,7 +72,7 @@ its own fiscal year, currency, source URL, and CER methodology note.
 ## 3. Deployment (~10 minutes)
 
 ### Step 1 — Import the Sheet
-1. [sheets.google.com](https://docs.google.com/spreadsheets/d/1Im4rIFsitn0cMLANcXHPbtnbQdJDLp5RZv0Mt5kTfLs/edit?usp=sharing) → **Blank**.
+1. [sheets.google.com](https://sheets.google.com) → **Blank**.
 2. **File → Import → Upload** → `Roche_Dashboard_DataLayer.xlsx` → **Replace spreadsheet**.
 3. Confirm all 12 tabs imported.
 
