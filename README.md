@@ -17,10 +17,10 @@ Currently seeded with Roche data only.
 roche-dashboard/
 ├── data/
 │   ├── Roche_Dashboard_DataLayer.xlsx   ← IMPORT THIS into Google Sheets
-│   ├── normalize.py                     ← parses raw RoFIS workbook → FACT rows
-│   ├── build_datalayer.py               ← assembles the multi-tab .xlsx
+│   ├── normalize.py                     ← parses raw RoFIS workbook → FACT rows (creates FACT_long.csv)
+│   ├── build_datalayer.py               ← assembles the multi-tab .xlsx (creates Roche_Dashboard_DataLayer.xlsx, which we than import on the google sheet)
 │   ├── FACT_long.csv                    ← 885-row normalised fact table (audit copy)
-│   └── simulate.js                      ← Node port of Calc.gs for validation
+│   └── simulate.js                      ← Node port of Calc.gs for validation (not needed on Google App Script)
 ├── apps-script/
 │   ├── Config.gs        ← CONFIGURATION layer
 │   ├── DataAccess.gs    ← DATA-ACCESS layer
@@ -32,6 +32,7 @@ roche-dashboard/
 │   └── JavaScript.html  ← client controller
 ├── README.md
 └── ARCHITECTURE.md
+└── QA_EVIDENCE.md
 ```
 
 ---
@@ -63,7 +64,7 @@ its own fiscal year, currency, source URL, and CER methodology note.
 ## 3. Deployment (~10 minutes)
 
 ### Step 1 — Import the Sheet
-1. [sheets.google.com](https://sheets.google.com) → **Blank**.
+1. [sheets.google.com](https://docs.google.com/spreadsheets/d/1Im4rIFsitn0cMLANcXHPbtnbQdJDLp5RZv0Mt5kTfLs/edit?usp=sharing) → **Blank**.
 2. **File → Import → Upload** → `Roche_Dashboard_DataLayer.xlsx` → **Replace spreadsheet**.
 3. Confirm all 12 tabs imported.
 
@@ -89,8 +90,7 @@ its own fiscal year, currency, source URL, and CER methodology note.
 
 ## 4. AI usage note
 
-Built with **Claude (Anthropic)** as coding assistant: architecture design, data
-normalisation scripts, Apps Script back end, HTML/CSS/JS front end, and Node-based
+Built with **Claude (Anthropic)** as coding assistant: Data normalisation scripts, Apps Script back end, HTML/CSS/JS front end, and Node-based
 validation. I remain responsible for architecture, financial calculation correctness,
 security, code review, and testing. No credentials or private data were used in any prompt.
 
